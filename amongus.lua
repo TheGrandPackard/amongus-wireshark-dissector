@@ -39,6 +39,7 @@ server_name = ProtoField.string("amongus.server_name", "Server Name", base.ASCII
 ip_address = ProtoField.ipv4("amongus.ip_address", "IP Address")
 port = ProtoField.uint8("amongus.port", "Port", base.DEC)
 age = ProtoField.uint8("amongus.age", "Age", base.DEC)
+banned = ProtoField.uint8("amongus.banned", "Banned", base.DEC)
 
 amongus_protocol.fields = { 
     -- header
@@ -77,6 +78,7 @@ amongus_protocol.fields = {
     ip_address,
     port,
     age,
+    banned,
     -- alter game
     alter_game_type,
     alter_game_value
@@ -117,8 +119,7 @@ function amongus_protocol.dissector(buffer, pinfo, tree)
     data_offset = -1
   elseif send_option_value == 10 then -- Acknowledgement
     subtree:add(sequence, buffer(1,2))
-    -- TODO: Decode last byte of Acknowledgement - likely part of Hazel netcode
-    -- subtree:add(disconnect_reason, buffer(3,1))
+    -- The last byte of Acknowledgement is likely part of Hazel netcode and not useful
     opcode_offset = -1
     data_offset = -1
   elseif send_option_value == 11 then -- Fragment
@@ -280,7 +281,6 @@ function dissect_joingame(buffer, data_offset, pinfo, tree)
         local game_code_value = buffer(data_offset,4):le_int()
         join_game_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
         join_game_subtree:add(player_id, buffer(data_offset+4, 4))
-
         -- TODO: Dissect last byte that always seems to be 0x07
     else
         local join_game_error_subtree = tree:add(amongus_protocol, buffer(), "Join Game Error")
@@ -342,8 +342,7 @@ function dissect_joinedgame(buffer, data_offset, pinfo, tree)
     joined_game_subtree:add(player_id, buffer(data_offset+4, 4))
     joined_game_subtree:add(host_id, buffer(data_offset+8, 4))
     joined_game_subtree:add(players, buffer(data_offset+12, 1))
-    -- TODO: Parse packed player ids and update offset for decoding alter game
-
+    -- TODO: Parse packed player ids
     -- This packet has an alter game packet at the end of it
     -- Skip 3 bytes for length and opcode
     dissect_altergame(buffer, data_offset+16, pinfo, tree)
@@ -374,10 +373,9 @@ function dissect_kickplayer(buffer, data_offset, pinfo, tree)
     kick_player_subtree:add_le(game_code, buffer(data_offset, 4))
     local game_code_value = buffer(data_offset,4):le_int()
     kick_player_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
-    kick_player_subtree:add(player_id, buffer(data_offset+4, 4))
+    kick_player_subtree:add(player_id, buffer(data_offset+4, 3))
     -- TODO: Parse packed player id    
-    local length = buffer:len()
-    kick_player_subtree:add(banned, buffer(length-2, 1))
+    kick_player_subtree:add(banned, buffer(data_offset+7, 1))
 end
 
 function dissect_waitforhost(buffer, data_offset, pinfo, tree)
@@ -488,4 +486,6 @@ local udp_port = DissectorTable.get("udp.port")
 udp_port:add(22023, amongus_protocol)
 udp_port:add(22323, amongus_protocol)
 udp_port:add(22623, amongus_protocol)
+udp_port:add(22723, amongus_protocol)
+udp_port:add(22823, amongus_protocol)
 udp_port:add(54237, amongus_protocol)
