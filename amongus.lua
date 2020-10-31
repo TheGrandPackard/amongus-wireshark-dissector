@@ -7,6 +7,7 @@ message_length = ProtoField.uint16("amongus.message_length", "Message Length", b
 opcode = ProtoField.uint8("amongus.opcode", "Op Code", base.DEC)
 opcode_name = ProtoField.string("amongus.opcode_name", "Op Code Name", base.ASCII)
 disconnect_reason = ProtoField.uint8("amongus.disconnect_reason", "Disconnect Reason", base.DEC)
+disconnect_reason_name = ProtoField.string("amongus.disconnect_reason_name", "Disconnect Reason Name", base.ASCII)
 client_version = ProtoField.uint32("amongus.client_version", "Client Version", base.DEC)
 player_name = ProtoField.string("amongus.player_name", "Player Name", base.ASCII)
 max_players = ProtoField.uint8("amongus.max_players", "Max Players", base.DEC)
@@ -32,6 +33,7 @@ amongus_protocol.fields = {
     opcode, opcode_name,
     -- payload
     disconnect_reason,
+    disconnect_reason_name,
     client_version, 
     player_name,
     max_players,
@@ -62,8 +64,7 @@ function amongus_protocol.dissector(buffer, pinfo, tree)
   -- every packet starts with a send option which determines how to dissect the rest of the packet
   local send_option_value = buffer(0,1):uint()
   subtree:add(send_option, buffer(0,1))
-  local send_option_str = get_send_option_name(send_option_value)
-  subtree:add(send_option_name, send_option_str)
+  subtree:add(send_option_name, get_send_option_name(send_option_value))
 
   -- where to look for the opcode and data
   local opcode_offset = 5
@@ -105,8 +106,7 @@ function amongus_protocol.dissector(buffer, pinfo, tree)
   if opcode_offset > -1 then
     opcode_value = buffer(opcode_offset,1):uint()
     subtree:add(opcode, buffer(opcode_offset,1))
-    opcode_name_str = get_opcode_name(opcode_value)
-    subtree:add(opcode_name, opcode_name_str)
+    subtree:add(opcode_name, get_opcode_name(opcode_value))
   end
 
   -- If data offset is set to -1, then there is no data in the packet
@@ -186,6 +186,34 @@ function get_opcode_name(opcode)
     return opcode_name
 end
 
+function get_disconnect_reason_name(disconnect_reason)
+    local disconnect_reason_name = "Unknown"
+
+    if disconnect_reason == 0 then disconnect_reason_name = "ExitGame"  
+    elseif disconnect_reason == 1 then disconnect_reason_name = "GameFull" -- The game you tried to join is full. Check with the host to see if you can join next round.
+    elseif disconnect_reason == 2 then disconnect_reason_name = "GameStarted" -- The game you tried to join already started. Check with the host to see if you can join next round.
+    elseif disconnect_reason == 3 then disconnect_reason_name = "GameMissing" -- Could not find the game you're looking for.
+    elseif disconnect_reason == 4 then disconnect_reason_name = "CustomMessage1"
+    elseif disconnect_reason == 5 then disconnect_reason_name = "IncorrectVersion" -- You are running an older version of the game. Please update to play with others.
+    elseif disconnect_reason == 6 then disconnect_reason_name = "Banned" -- You cannot rejoin that room. You were banned
+    elseif disconnect_reason == 7 then disconnect_reason_name = "Kicked" -- You can rejoin if the room hasn't started. You were kicked
+    elseif disconnect_reason == 8 then disconnect_reason_name = "Custom"
+    elseif disconnect_reason == 9 then disconnect_reason_name = "InvalidName" -- Server refused username: %USERNAME%
+    elseif disconnect_reason == 10 then disconnect_reason_name = "Hacking" -- You were banned for hacking. Please stop.
+    elseif disconnect_reason == 16 then disconnect_reason_name = "Destroy"
+    elseif disconnect_reason == 18 then disconnect_reason_name = "IncorrectGame"
+    elseif disconnect_reason == 17 then disconnect_reason_name = "Error" -- You disconnected from the server.
+    elseif disconnect_reason == 19 then disconnect_reason_name = "ServerRequest" -- The server stopped this game. Possibly due to inactivity.
+    elseif disconnect_reason == 20 then disconnect_reason_name = "ServerFull" -- The Among Us servers are overloaded. Sorry! Please try again later!
+    elseif disconnect_reason == 207 then disconnect_reason_name = "FocusLostBackground"
+    elseif disconnect_reason == 208 then disconnect_reason_name = "IntentionalLeaving"
+    elseif disconnect_reason == 209 then disconnect_reason_name = "FocusLost"
+    elseif disconnect_reason == 210 then disconnect_reason_name = "NewConnection"
+    end
+
+    return disconnect_reason_name
+end
+
 function dissect_hostgame(buffer, data_offset, pinfo, tree)
     length = buffer:len()
     if length == 10 then 
@@ -216,8 +244,8 @@ function dissect_joingame(buffer, data_offset, pinfo, tree)
     else
         local join_game_error_subtree = tree:add(amongus_protocol, buffer(), "Join Game Error")
         join_game_error_subtree:add(disconnect_reason, buffer(data_offset, 1))
-
-        -- TODO: Map disconnect reasons to string values 'disconnect_reason_string' column
+        local disconnect_reason_value = buffer(data_offset, 1):uint()
+        join_game_error_subtree:add(disconnect_reason_name, get_disconnect_reason_name(disconnect_reason_value))
     end
 
 end
@@ -231,6 +259,7 @@ end
 
 function dissect_removegame(buffer, data_offset, pinfo, tree)
     -- Remove Game is either deprectated or never used
+end
 
 function dissect_removeplayer(buffer, data_offset, pinfo, tree)
     local remove_player_subtree = tree:add(amongus_protocol, buffer(), "Remove Player Request")
@@ -344,6 +373,7 @@ function dissect_getgamelistv2(buffer, data_offset, pinfo, tree)
         get_game_list_request_subtree:add_le(language, buffer(data_offset+4, 2))
         get_game_list_request_subtree:add(map, buffer(data_offset+8, 1))
         get_game_list_request_subtree:add(num_imposters, buffer(data_offset+32, 1))
+
         -- TODO: Dissect remaining bytes of get game list v2 packet
     else 
         local get_game_list_subtree_response = tree:add(amongus_protocol, buffer(), "Get Game List V2 Response")
@@ -392,6 +422,8 @@ function IntToGameCodeV2(code)
     
     return out1 .. out2 .. out3 .. out4 .. out5 .. out6
 end
+
+-- TODO: function ReadPackedInt() end
 
 local udp_port = DissectorTable.get("udp.port")
 udp_port:add(22023, amongus_protocol)
