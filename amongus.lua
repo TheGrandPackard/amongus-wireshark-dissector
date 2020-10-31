@@ -8,13 +8,23 @@ opcode = ProtoField.uint8("amongus.opcode", "Op Code", base.DEC)
 opcode_name = ProtoField.string("amongus.opcode_name", "Op Code Name", base.ASCII)
 disconnect_reason = ProtoField.uint8("amongus.disconnect_reason", "Disconnect Reason", base.DEC)
 disconnect_reason_name = ProtoField.string("amongus.disconnect_reason_name", "Disconnect Reason Name", base.ASCII)
+game_data_opcode = ProtoField.uint8("amongus.gamd_data_opcode", "Game Data Op Code", base.DEC)
+game_data_opcode_name = ProtoField.string("amongus.gamd_data_opcode_name", "Game Data Op Code Name", base.ASCII)
+
 client_version = ProtoField.uint32("amongus.client_version", "Client Version", base.DEC)
 player_name = ProtoField.string("amongus.player_name", "Player Name", base.ASCII)
+player_id = ProtoField.uint32("amongus.player_id", "Player ID", base.DEC)
+
+server_name = ProtoField.string("amongus.server_name", "Server Name", base.ASCII)
+host_id = ProtoField.uint32("amongus.host_id", "Host ID", base.DEC)
+ip_address = ProtoField.ipv4("amongus.ip_address", "IP Address")
+port = ProtoField.uint8("amongus.port", "Port", base.DEC)
 game_version = ProtoField.uint8("amongus.game_version", "Game Version", base.DEC)
 max_players = ProtoField.uint8("amongus.max_players", "Max Players", base.DEC)
 players = ProtoField.uint8("amongus.players", "Players", base.DEC)
 language = ProtoField.uint32("amongus.language", "Language", base.DEC)
 map = ProtoField.uint8("amongus.map", "Map", base.DEC)
+age = ProtoField.uint8("amongus.age", "Age", base.DEC)
 player_speed_mod = ProtoField.float("amongus.player_speed_mod", "Player Speed Mod", base.DEC)
 crew_light_mod = ProtoField.float("amongus.crew_light_mod", "Crew Light Mod", base.DEC)
 impostor_light_mod = ProtoField.float("amongus.impostor_light_mod", "Impostor Light Mod", base.DEC)
@@ -31,24 +41,19 @@ is_defaults = ProtoField.uint8("amongus.is_defaults", "Is Defaults", base.DEC)
 emergency_cooldown = ProtoField.uint8("amongus.emergency_cooldown", "Emergency Cooldown", base.DEC)
 game_code = ProtoField.int32("amongus.game_code", "Game Code", base.DEC)
 game_code_string = ProtoField.string("amongus.game_code_string", "Game Code String", base.ASCII)
-player_id = ProtoField.uint32("amongus.player_id", "Player ID", base.DEC)
-host_id = ProtoField.uint32("amongus.host_id", "Host ID", base.DEC)
 alter_game_type = ProtoField.uint8("amongus.alter_game_type", "Alter Game Type", base.DEC)
 alter_game_value = ProtoField.uint8("amongus.alter_game_value", "Alter Game Value", base.DEC)
-server_name = ProtoField.string("amongus.server_name", "Server Name", base.ASCII)
-ip_address = ProtoField.ipv4("amongus.ip_address", "IP Address")
-port = ProtoField.uint8("amongus.port", "Port", base.DEC)
-age = ProtoField.uint8("amongus.age", "Age", base.DEC)
+
 banned = ProtoField.uint8("amongus.banned", "Banned", base.DEC)
 
 amongus_protocol.fields = { 
-    -- header
     send_option, send_option_name, 
     sequence, message_length, 
     opcode, opcode_name,
-    -- payload
     disconnect_reason,
     disconnect_reason_name,
+    game_data_opcode,
+    game_data_opcode_name,
     client_version, 
     player_name,
     game_version,
@@ -79,7 +84,6 @@ amongus_protocol.fields = {
     port,
     age,
     banned,
-    -- alter game
     alter_game_type,
     alter_game_value
 }
@@ -117,6 +121,11 @@ function amongus_protocol.dissector(buffer, pinfo, tree)
   elseif send_option_value == 9 then -- Disconnect
     opcode_offset = -1
     data_offset = -1
+    if length > 1 then
+        subtree:add(disconnect_reason, buffer(5, 1))
+        local disconnect_reason_length = buffer(6,1):uint()
+        subtree:add(disconnect_reason_name, buffer(7,disconnect_reason_length))
+    end
   elseif send_option_value == 10 then -- Acknowledgement
     subtree:add(sequence, buffer(1,2))
     -- The last byte of Acknowledgement is likely part of Hazel netcode and not useful
@@ -133,8 +142,8 @@ function amongus_protocol.dissector(buffer, pinfo, tree)
   
   -- If opcode offset is set to -1, then there is no opcode in the packet
   if opcode_offset > -1 then
-    opcode_value = buffer(opcode_offset,1):uint()
     subtree:add(opcode, buffer(opcode_offset,1))
+    opcode_value = buffer(opcode_offset,1):uint()
     subtree:add(opcode_name, get_opcode_name(opcode_value))
   end
 
@@ -215,6 +224,15 @@ function get_opcode_name(opcode)
     return opcode_name
 end
 
+function get_game_data_opcode_name(opcode)
+    local opcode_name = "Unknown"
+  
+        if opcode == 11 then opcode_name = "OP_PLAYERMOVEMENT"
+    end
+  
+    return opcode_name
+end
+
 function get_disconnect_reason_name(disconnect_reason)
     local disconnect_reason_name = "Unknown"
 
@@ -279,8 +297,7 @@ function dissect_joingame(buffer, data_offset, pinfo, tree)
         local join_game_subtree = tree:add(amongus_protocol, buffer(), "Join Game Request")
         join_game_subtree:add_le(game_code, buffer(data_offset, 4))
         local game_code_value = buffer(data_offset,4):le_int()
-        join_game_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
-        join_game_subtree:add(player_id, buffer(data_offset+4, 4))
+        join_game_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))        
         -- TODO: Dissect last byte that always seems to be 0x07
     else
         local join_game_error_subtree = tree:add(amongus_protocol, buffer(), "Join Game Error")
@@ -331,7 +348,24 @@ function dissect_gamedatato(buffer, data_offset, pinfo, tree)
 end
 
 function dissect_game_data_packet(buffer, data_offset, pinfo, tree) 
-    -- TODO: Dissect Game Data
+    tree:add(game_data_opcode, buffer(data_offset, 1))
+    local game_data_opcode_value = buffer(data_offset,1):uint()
+    tree:add(game_data_opcode_name, get_game_data_opcode_name(game_data_opcode_value))
+    -- TODO: Dissect game data packets
+
+    -- 0x0b movement position update
+    -- 0x00 0x01 0x06 - message header and a player id?
+    -- movement update sequence uint16 little endian
+    -- x position int16? endianness?
+    -- y position int16? endianness?
+    -- 0xff 0x7f 0xff 0x7f
+    
+    -- 0x0b movement position update
+    -- 0x00 0x01 0x09 - message header and a player id?
+    -- movement update sequence uint16 little endian
+    -- x position int16? endianness?
+    -- y position int16? endianness?
+    -- 0xff 0x87 0xff 0x7f
 end
 
 function dissect_joinedgame(buffer, data_offset, pinfo, tree)
@@ -342,7 +376,7 @@ function dissect_joinedgame(buffer, data_offset, pinfo, tree)
     joined_game_subtree:add(player_id, buffer(data_offset+4, 4))
     joined_game_subtree:add(host_id, buffer(data_offset+8, 4))
     joined_game_subtree:add(players, buffer(data_offset+12, 1))
-    -- TODO: Parse packed player ids
+    -- TODO: Parse array of packed player ids
     -- This packet has an alter game packet at the end of it
     -- Skip 3 bytes for length and opcode
     dissect_altergame(buffer, data_offset+16, pinfo, tree)
