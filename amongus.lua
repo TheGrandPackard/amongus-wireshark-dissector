@@ -10,11 +10,25 @@ disconnect_reason = ProtoField.uint8("amongus.disconnect_reason", "Disconnect Re
 disconnect_reason_name = ProtoField.string("amongus.disconnect_reason_name", "Disconnect Reason Name", base.ASCII)
 client_version = ProtoField.uint32("amongus.client_version", "Client Version", base.DEC)
 player_name = ProtoField.string("amongus.player_name", "Player Name", base.ASCII)
+game_version = ProtoField.uint8("amongus.game_version", "Game Version", base.DEC)
 max_players = ProtoField.uint8("amongus.max_players", "Max Players", base.DEC)
 players = ProtoField.uint8("amongus.players", "Players", base.DEC)
-language = ProtoField.uint16("amongus.language", "Language", base.DEC)
+language = ProtoField.uint32("amongus.language", "Language", base.DEC)
 map = ProtoField.uint8("amongus.map", "Map", base.DEC)
+player_speed_mod = ProtoField.float("amongus.player_speed_mod", "Player Speed Mod", base.DEC)
+crew_light_mod = ProtoField.float("amongus.crew_light_mod", "Crew Light Mod", base.DEC)
+impostor_light_mod = ProtoField.float("amongus.impostor_light_mod", "Impostor Light Mod", base.DEC)
+kill_cooldown = ProtoField.float("amongus.kill_cooldown", "Kill Cooldown", base.DEC)
+num_common_tasks = ProtoField.uint8("amongus.num_common_tasks", "Num Common Tasks", base.DEC)
+num_long_tasks = ProtoField.uint8("amongus.num_long_tasks", "Num Long Tasks", base.DEC)
+num_short_tasks = ProtoField.uint8("amongus.num_short_tasks", "Num Short Tasks", base.DEC)
+num_emergency_meetings = ProtoField.int32("amongus.num_emergency_meetings", "Num Emergency Meetings", base.DEC)
 num_imposters = ProtoField.uint8("amongus.num_imposters", "Num Imposters", base.DEC)
+kill_distance = ProtoField.uint8("amongus.kill_distance", "Kill Distance", base.DEC)
+discussion_time = ProtoField.int32("amongus.discussion_time", "Discussion Time", base.DEC)
+voting_time = ProtoField.int32("amongus.voting_time", "Voting Time", base.DEC)
+is_defaults = ProtoField.uint8("amongus.is_defaults", "Is Defaults", base.DEC)
+emergency_cooldown = ProtoField.uint8("amongus.emergency_cooldown", "Emergency Cooldown", base.DEC)
 game_code = ProtoField.int32("amongus.game_code", "Game Code", base.DEC)
 game_code_string = ProtoField.string("amongus.game_code_string", "Game Code String", base.ASCII)
 player_id = ProtoField.uint32("amongus.player_id", "Player ID", base.DEC)
@@ -36,11 +50,25 @@ amongus_protocol.fields = {
     disconnect_reason_name,
     client_version, 
     player_name,
+    game_version,
     max_players,
     players,
     language,
     map,
+    player_speed_mod,
+    crew_light_mod,
+    impostor_light_mod,
+    kill_cooldown,
+    num_common_tasks,
+    num_long_tasks,
+    num_short_tasks,
+    num_emergency_meetings,
     num_imposters,
+    kill_distance,
+    discussion_time,
+    voting_time,
+    is_defaults,
+    emergency_cooldown,
     game_code,
     game_code_string,
     player_id,
@@ -55,7 +83,7 @@ amongus_protocol.fields = {
 }
 
 function amongus_protocol.dissector(buffer, pinfo, tree)
-  length = buffer:len()
+  local length = buffer:len()
   if length == 0 then return end
 
   pinfo.cols.protocol = amongus_protocol.name
@@ -215,30 +243,43 @@ function get_disconnect_reason_name(disconnect_reason)
 end
 
 function dissect_hostgame(buffer, data_offset, pinfo, tree)
-    length = buffer:len()
+    local length = buffer:len()
     if length == 10 then 
         local host_game_subtree = tree:add(amongus_protocol, buffer(), "Host Game Response")
         host_game_subtree:add_le(game_code, buffer(data_offset, 4))
         local game_code_value = buffer(data_offset,4):le_int()
         host_game_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
     else  
-      local host_game_subtree = tree:add(amongus_protocol, buffer(), "Host Game Request")
+      local host_game_subtree = tree:add(amongus_protocol, buffer(), "Host Game Request")      
+      host_game_subtree:add(game_version, buffer(data_offset+1, 1))
       host_game_subtree:add(max_players, buffer(data_offset+2, 1))
-      host_game_subtree:add(language, buffer(data_offset+3, 2))
-      host_game_subtree:add(map, buffer(data_offset+6, 1))
+      host_game_subtree:add_le(language, buffer(data_offset+3, 4))
+      host_game_subtree:add(map, buffer(data_offset+7, 1))
+      host_game_subtree:add_le(player_speed_mod, buffer(data_offset+8, 4))
+      host_game_subtree:add_le(crew_light_mod, buffer(data_offset+12, 4))
+      host_game_subtree:add_le(impostor_light_mod, buffer(data_offset+16, 4))
+      host_game_subtree:add_le(kill_cooldown, buffer(data_offset+20, 4))
+      host_game_subtree:add(num_common_tasks, buffer(data_offset+24, 1))
+      host_game_subtree:add(num_long_tasks, buffer(data_offset+25, 1))
+      host_game_subtree:add(num_short_tasks, buffer(data_offset+26, 1))
+      host_game_subtree:add_le(num_emergency_meetings, buffer(data_offset+27, 4))
       host_game_subtree:add(num_imposters, buffer(data_offset+31, 1))
-
-      -- TODO: Dissect remaining bytes of host game packet
+      host_game_subtree:add(kill_distance, buffer(data_offset+32, 1))
+      host_game_subtree:add_le(discussion_time, buffer(data_offset+33, 4))
+      host_game_subtree:add_le(voting_time, buffer(data_offset+37, 4))
+      host_game_subtree:add(is_defaults, buffer(data_offset+41, 1))
+      host_game_subtree:add(emergency_cooldown, buffer(data_offset+42, 1))
     end
 end
 
 function dissect_joingame(buffer, data_offset, pinfo, tree)
     length = buffer:len()
-    if length == 11 then 
+    if length >= 11 then 
         local join_game_subtree = tree:add(amongus_protocol, buffer(), "Join Game Request")
         join_game_subtree:add_le(game_code, buffer(data_offset, 4))
         local game_code_value = buffer(data_offset,4):le_int()
         join_game_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
+        join_game_subtree:add(player_id, buffer(data_offset+4, 4))
 
         -- TODO: Dissect last byte that always seems to be 0x07
     else
@@ -247,7 +288,6 @@ function dissect_joingame(buffer, data_offset, pinfo, tree)
         local disconnect_reason_value = buffer(data_offset, 1):uint()
         join_game_error_subtree:add(disconnect_reason_name, get_disconnect_reason_name(disconnect_reason_value))
     end
-
 end
 
 function dissect_startgame(buffer, data_offset, pinfo, tree)
@@ -275,7 +315,8 @@ function dissect_gamedata(buffer, data_offset, pinfo, tree)
     local game_code_value = buffer(data_offset,4):le_int()
     game_data_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
 
-    -- TODO: Dissect Game Data
+    local data_offset = data_offset + 4
+    dissect_game_data_packet(buffer, data_offset, pinfo, game_data_subtree)
 end
 
 function dissect_gamedatato(buffer, data_offset, pinfo, tree)
@@ -285,6 +326,11 @@ function dissect_gamedatato(buffer, data_offset, pinfo, tree)
     game_data_to_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
     game_data_to_subtree:add(player_id, buffer(data_offset+4, 4))
 
+    local data_offset = data_offset + 4
+    dissect_game_data_packet(buffer, data_offset, pinfo, game_data_to_subtree)
+end
+
+function dissect_game_data_packet(buffer, data_offset, pinfo, tree) 
     -- TODO: Dissect Game Data
 end
 
@@ -329,8 +375,9 @@ function dissect_kickplayer(buffer, data_offset, pinfo, tree)
     local game_code_value = buffer(data_offset,4):le_int()
     kick_player_subtree:add(game_code_string, IntToGameCodeV2(game_code_value))
     kick_player_subtree:add(player_id, buffer(data_offset+4, 4))
-    -- TODO: Parse packed player id
-    -- TODO: Parse ban boolean in last byte
+    -- TODO: Parse packed player id    
+    local length = buffer:len()
+    kick_player_subtree:add(banned, buffer(length-2, 1))
 end
 
 function dissect_waitforhost(buffer, data_offset, pinfo, tree)
@@ -366,15 +413,27 @@ function dissect_reselectserver(buffer, data_offset, pinfo, tree)
 end
 
 function dissect_getgamelistv2(buffer, data_offset, pinfo, tree)
-    length = buffer:len()
+    local length = buffer:len()
     if length == 50 then 
         local get_game_list_request_subtree = tree:add(amongus_protocol, buffer(), "Get Game List V2 Request")
+        get_game_list_request_subtree:add(game_version, buffer(data_offset+2, 1))
         get_game_list_request_subtree:add(max_players, buffer(data_offset+3, 1))
-        get_game_list_request_subtree:add_le(language, buffer(data_offset+4, 2))
+        get_game_list_request_subtree:add_le(language, buffer(data_offset+4, 4))
         get_game_list_request_subtree:add(map, buffer(data_offset+8, 1))
+        get_game_list_request_subtree:add_le(player_speed_mod, buffer(data_offset+9, 4))
+        get_game_list_request_subtree:add_le(crew_light_mod, buffer(data_offset+13, 4))
+        get_game_list_request_subtree:add_le(impostor_light_mod, buffer(data_offset+17, 4))
+        get_game_list_request_subtree:add_le(kill_cooldown, buffer(data_offset+21, 4))
+        get_game_list_request_subtree:add(num_common_tasks, buffer(data_offset+25, 1))
+        get_game_list_request_subtree:add(num_long_tasks, buffer(data_offset+26, 1))
+        get_game_list_request_subtree:add(num_short_tasks, buffer(data_offset+27, 1))
+        get_game_list_request_subtree:add_le(num_emergency_meetings, buffer(data_offset+28, 4))
         get_game_list_request_subtree:add(num_imposters, buffer(data_offset+32, 1))
-
-        -- TODO: Dissect remaining bytes of get game list v2 packet
+        get_game_list_request_subtree:add(kill_distance, buffer(data_offset+33, 1))
+        get_game_list_request_subtree:add_le(discussion_time, buffer(data_offset+34, 4))
+        get_game_list_request_subtree:add_le(voting_time, buffer(data_offset+38, 4))
+        get_game_list_request_subtree:add(is_defaults, buffer(data_offset+42, 1))
+        get_game_list_request_subtree:add(emergency_cooldown, buffer(data_offset+43, 1))
     else 
         local get_game_list_subtree_response = tree:add(amongus_protocol, buffer(), "Get Game List V2 Response")
         local game_length = buffer(data_offset,2):le_uint()
@@ -427,4 +486,6 @@ end
 
 local udp_port = DissectorTable.get("udp.port")
 udp_port:add(22023, amongus_protocol)
+udp_port:add(22323, amongus_protocol)
 udp_port:add(22623, amongus_protocol)
+udp_port:add(54237, amongus_protocol)
