@@ -12,6 +12,7 @@ game_data_opcode = ProtoField.uint8("amongus.gamd_data_opcode", "Game Data Op Co
 game_data_opcode_name = ProtoField.string("amongus.gamd_data_opcode_name", "Game Data Op Code Name", base.ASCII)
 
 client_version = ProtoField.uint32("amongus.client_version", "Client Version", base.DEC)
+client_version_string = ProtoField.string("amongus.client_version_string", "Client Version String", base.ASCII)
 player_name = ProtoField.string("amongus.player_name", "Player Name", base.ASCII)
 player_id = ProtoField.uint32("amongus.player_id", "Player ID", base.DEC)
 
@@ -55,6 +56,7 @@ amongus_protocol.fields = {
     game_data_opcode,
     game_data_opcode_name,
     client_version, 
+    client_version_string,
     player_name,
     game_version,
     max_players,
@@ -114,6 +116,8 @@ function amongus_protocol.dissector(buffer, pinfo, tree)
   elseif send_option_value == 8 then -- Hello
     subtree:add(sequence, buffer(1,2))
     subtree:add_le(client_version, buffer(4,4))
+    local client_version_value = buffer(4,4):le_int()
+    subtree:add(client_version_string, IntToGameVersion(client_version_value))
     local name_length = buffer(8,1):uint()
     subtree:add(player_name, buffer(9,name_length))
     opcode_offset = -1
@@ -500,8 +504,8 @@ end
 
 function IntToGameCodeV2(code)
     local gameCodeV2 = 'QWXRTYLPESDFGHUJKZOCVBINMA'
-    a = bit32.band(code, 0x3FF)
-    b = bit32.rshift(code,10) 
+    local a = bit32.band(code, 0x3FF)
+    local b = bit32.rshift(code,10) 
     b = bit32.band(b, 0xFFFFF)
 
     out1 = string.sub(gameCodeV2, 1 + math.floor(a%26), 1 + math.floor(a%26))
@@ -514,6 +518,18 @@ function IntToGameCodeV2(code)
     return out1 .. out2 .. out3 .. out4 .. out5 .. out6
 end
 
+function IntToGameVersion(version)
+    print(year)
+    local year = math.floor(version / 25000)
+    print(year)
+    local month = math.floor((version - math.floor(year * 25000)) / 1800)
+    print(month)
+    local day = math.floor((version - math.floor(year * 25000) - math.floor(month * 1800)) / 50)
+    print(day)
+
+    return year .. "." .. month .. "." .. day
+end
+
 -- TODO: function ReadPackedInt() end
 
 local udp_port = DissectorTable.get("udp.port")
@@ -523,3 +539,4 @@ udp_port:add(22623, amongus_protocol)
 udp_port:add(22723, amongus_protocol)
 udp_port:add(22823, amongus_protocol)
 udp_port:add(54237, amongus_protocol)
+udp_port:add(55837, amongus_protocol)
